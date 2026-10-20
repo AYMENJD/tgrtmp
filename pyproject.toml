@@ -18,6 +18,8 @@ keywords = [
     "livestream",
     "publishing",
     "native",
+    "nanobind",
+    "cpp",
     "high-performance",
     "prebuilt-binaries",
     "linux",
@@ -55,10 +57,7 @@ docs = [
     "mkdocs-gen-files",
     "mkdocs-literate-nav",
 ]
-test = [
-    "pytest",
-    "pytest-xdist",
-]
+test = ["pytest", "pytest-xdist"]
 
 [tool.scikit-build]
 wheel.packages = ["tgrtmp"]
