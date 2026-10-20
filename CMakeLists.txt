@@ -6,7 +6,7 @@ if(POLICY CMP0065)
   cmake_policy(SET CMP0065 NEW)
 endif()
 
-project(tgrtmp VERSION 0.1.0 LANGUAGES CXX)
+project(tgrtmp VERSION 0.5.0 LANGUAGES CXX)
 
 if(NOT DEFINED CMAKE_MODULE_PATH)
   set(CMAKE_MODULE_PATH "")
