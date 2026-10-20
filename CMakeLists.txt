@@ -27,7 +27,19 @@ endif()
 include(PreventInSourceBuild)
 prevent_in_source_build()
 
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL)
+
+if(NOT OpenSSL_FOUND)
+    message(FATAL_ERROR
+        " tgrtmp needs the OpenSSL development headers to build.\n"
+        "   Debian/Ubuntu:  sudo apt install libssl-dev\n"
+        "   Fedora/RHEL:    sudo dnf install openssl-devel\n"
+        "   Alpine:         apk add openssl-dev\n"
+        "   macOS:          brew install openssl@3\n"
+        "   Windows:        vcpkg install openssl:x64-windows, then set\n"
+        "                   CMAKE_PREFIX_PATH to vcpkg's installed triplet"
+    )
+endif()
 
 if (CMAKE_VERSION VERSION_LESS 3.18)
     set(DEV_MODULE Development)

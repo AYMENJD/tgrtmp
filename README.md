@@ -38,11 +38,14 @@
 
 ### Installation
 
-You can install tgrtmp with prebuilt binaries using pip:
-
 ```bash
 pip install --upgrade tgrtmp
 ```
+
+tgrtmp builds from source on install, so it needs a C++ compiler and the
+OpenSSL development headers; the [installation
+guide](https://tgrtmp.pages.dev/getting-started/installation/) has the
+one command for your system.
 
 ### Examples
 

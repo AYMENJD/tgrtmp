@@ -71,22 +71,5 @@ input = "tgrtmp/_version.py"
 [tool.scikit-build.cmake.define]
 CMAKE_BUILD_TYPE = "Release"
 
-[tool.cibuildwheel]
-build-verbosity = 1
-skip = "*musllinux*"
-archs = ["native"]
-
-[tool.cibuildwheel.linux]
-before-all = "bash .github/workflows/scripts/before-all-linux-64.sh"
-manylinux-x86_64-image = "manylinux2014"
-manylinux-aarch64-image = "manylinux2014"
-
-[tool.cibuildwheel.macos]
-environment = { CMAKE_ARGS = "-DOPENSSL_ROOT_DIR=/usr/local" }
-
-[tool.cibuildwheel.windows]
-before-build = "pip install delvewheel"
-repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel}"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
