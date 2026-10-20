@@ -22,6 +22,7 @@ ENTRIES = [
     ("tgrtmp.publish", "function"),
     ("tgrtmp.Player", "class"),
     ("tgrtmp.stream", "function"),
+    ("tgrtmp.needs_transcode", "function"),
     ("tgrtmp.Publisher", "class"),
     ("tgrtmp.Source", "class"),
     ("tgrtmp.SourceError", "exception"),
