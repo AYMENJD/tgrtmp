@@ -1,0 +1,105 @@
+site_name: tgrtmp
+site_url: https://tgrtmp.pages.dev
+site_description: RTMP(S) publishing client for Telegram livestreams
+site_author: AYMEN
+repo_url: https://github.com/AYMENJD/tgrtmp
+repo_name: AYMENJD/tgrtmp
+edit_uri: ""
+copyright: Copyright &copy; 2026 tgrtmp
+
+theme:
+  name: material
+  font: false
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.instant
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+extra:
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+watch:
+  - generate_docs.py
+  - docs_social_hook.py
+
+hooks:
+  - docs_social_hook.py
+
+plugins:
+  - search
+  - autorefs
+  - gen-files:
+      scripts:
+        - generate_docs.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+validation:
+  nav:
+    omitted_files: info
+    not_found: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: relative_to_docs
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quick start: getting-started/quickstart.md
+      - Live sources: getting-started/live-sources.md
+  - Guides:
+      - Player: guides/player.md
+      - The live window: guides/live-window.md
+      - 24/7 channels: guides/looping.md
+      - Reconnecting: guides/reconnecting.md
+      - Monitoring: guides/monitoring.md
+      - The blocking API: guides/stream.md
+      - Low level: guides/low-level.md
+      - Errors: guides/errors.md
+  - API reference: reference/
+  - Examples: examples.md
+
+not_in_nav: |
+  /reference/entries/*
+  !/reference/entries/index.md

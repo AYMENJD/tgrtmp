@@ -1,0 +1,31 @@
+# Errors
+
+Two kinds of failure, two behaviors.
+
+## Drops: retried
+
+Network failures, server resets, TLS timeouts: the session dies, the player backs off (1 s doubling to 30 s) and reconnects. Nothing raises; `log` and [`on_connection`](reconnecting.md) narrate.
+
+## Broken sources: fatal
+
+A bad container, a truncated file, a codec Telegram does not accept; retrying cannot help. The player stops, and `player.error` carries the reason:
+
+```python
+player = tgrtmp.publish("broken.mp4", url, key)
+
+while not player.stopped:
+    time.sleep(0.5)
+
+if player.error:
+    print("failed:", player.error)
+```
+
+In the blocking API the same condition raises [`SourceError`][tgrtmp.SourceError].
+
+## Warnings: not errors
+
+`player.warnings` collects things the server will tolerate but you should fix: non-16:9 sources that Telegram will stretch, odd audio sample rates. They never stop the session.
+
+## Client vs player
+
+`Client.error` (low level) explains why one connection closed. `Player.error` is the session-level verdict, set only when the player gave up for good.

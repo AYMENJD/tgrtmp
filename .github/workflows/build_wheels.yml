@@ -1,0 +1,258 @@
+name: Build and Publish Wheels
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+env:
+  USING_PYTHON_VERSION: '3.13.9'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.USING_PYTHON_VERSION }}
+
+      - name: Set up FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Build tgrtmp
+        run: python -m pip install -e .
+
+      - name: Run the tests
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/
+
+  linux-build:
+    needs: test
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.USING_PYTHON_VERSION }}
+
+      - name: Set up FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade cibuildwheel
+
+      - name: Build wheels
+        run: |
+          mkdir -p ./wheelhouse
+          python -m cibuildwheel . --output-dir ./wheelhouse
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-${{ matrix.runner }}
+          path: ./wheelhouse/*.whl
+
+  windows-build:
+    needs: test
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.USING_PYTHON_VERSION }}
+
+      - name: Set up FFmpeg
+        run: |
+          choco install ffmpeg
+
+      - name: Install Python dependencies
+        shell: bash
+        run: python -m pip install --upgrade cibuildwheel
+
+      - name: Build OpenSSL 1.1.1
+        shell: bash
+
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git
+          cd vcpkg
+          ./bootstrap-vcpkg.bat
+          cd ..
+
+          cat << EOF > vcpkg.json
+          {
+            "dependencies": [ "openssl" ],
+            "builtin-baseline": "afb2279ad78a7c29b5293d989b9a1a2ca00000cf",
+            "overrides": [
+              { "name": "openssl", "version": "1.1.1m" }
+            ]
+          }
+          EOF
+
+          ./vcpkg/vcpkg install --triplet x64-windows
+          echo "${{ github.workspace }}/vcpkg_installed/x64-windows/bin" >> $GITHUB_PATH
+
+      - name: Build wheels
+        shell: bash
+        env:
+          CMAKE_PREFIX_PATH: ${{ github.workspace }}/vcpkg_installed/x64-windows
+
+        run: |
+          mkdir -p ./wheelhouse
+          python -m cibuildwheel . --output-dir ./wheelhouse
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-windows
+          path: ./wheelhouse/*.whl
+
+  macos-build:
+    needs: test
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.USING_PYTHON_VERSION }}
+
+      - name: Set up FFmpeg
+        run: brew install ffmpeg
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade cibuildwheel
+
+      - name: Build OpenSSL 1.1.1
+        run: |
+          git clone --depth 1 --branch OpenSSL_1_1_1-stable https://github.com/openssl/openssl.git
+          cd openssl
+          perl ./Configure darwin64-arm64-cc --prefix=/usr/local --openssldir=/usr/local/openssl
+          make -j
+          sudo make install MANDIR=/usr/local/openssl/share/man MANSUFFIX=ssl
+          cd .. && rm -rf openssl
+
+      - name: Build wheels
+        run: |
+          mkdir -p ./wheelhouse
+          python -m cibuildwheel . --output-dir ./wheelhouse
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: wheels-macos
+          path: ./wheelhouse/*.whl
+
+  publish:
+    needs: [linux-build, windows-build, macos-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v8
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: ./dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python - << 'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          repo = os.environ["REPO"]
+
+          # The tag sits on its own line at the end of the message: "#fix".
+          SECTIONS = {
+              "feat": "Features",
+              "feature": "Features",
+              "fix": "Bug fix",
+              "bug": "Bug fix",
+              "bugfix": "Bug fix",
+              "perf": "Performance",
+              "docs": "Documentation",
+              "doc": "Documentation",
+              "test": "Tests",
+              "tests": "Tests",
+              "refactor": "Refactor",
+              "build": "Build",
+              "ci": "Build",
+          }
+          ORDER = ["Features", "Bug fix", "Performance", "Refactor", "Documentation", "Tests", "Build"]
+          TAG = re.compile(r"^#([A-Za-z][\w-]*)$", re.MULTILINE)
+          prev = subprocess.run(
+              ["git", "describe", "--tags", "--abbrev=0", "HEAD^"],
+              capture_output=True,
+              text=True,
+          )
+          revision = f"{prev.stdout.strip()}..HEAD" if prev.returncode == 0 else "HEAD"
+          raw = subprocess.check_output(
+              ["git", "log", "--reverse", revision, "--pretty=format:%H%x1f%h%x1f%s%x1f%b%x1e"],
+              text=True,
+          )
+
+          grouped = {}
+          for record in raw.split("\x1e"):
+              record = record.strip("\n")
+              if not record.strip():
+                  continue
+              full, short, subject, body = (record.split("\x1f") + ["", "", ""])[:4]
+              subject = subject.strip()
+              tags = TAG.findall(body)
+              if not tags:
+                  continue
+              tag = tags[-1].lower()
+              section = SECTIONS.get(tag, tag[:1].upper() + tag[1:])
+              link = f"https://github.com/{repo}/commit/{full}"
+              grouped.setdefault(section, []).append(f"- {subject} ([{short}]({link}))")
+
+          ordered = [name for name in ORDER if name in grouped]
+          ordered += sorted(name for name in grouped if name not in ORDER)
+
+          body = ""
+          for name in ordered:
+              body += f"\n## {name}\n\n" + "\n".join(grouped[name]) + "\n"
+          Path("release-notes.md").write_text(body)
+          PY
+          gh release create "${{ github.ref_name }}" \
+            --draft \
+            --title "${{ github.ref_name }}" \
+            --notes-file release-notes.md
