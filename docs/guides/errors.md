@@ -26,6 +26,10 @@ In the blocking API the same condition raises [`SourceError`][tgrtmp.SourceError
 
 `player.warnings` collects things the server will tolerate but you should fix: non-16:9 sources that Telegram will stretch, odd audio sample rates. They never stop the session.
 
+## Misuse: raised at once
+
+Calls that cannot work raise immediately and never touch the stream: `loop=True` on a player with a playlist, queueing into a player that repeats one file, `play_next()` after the player has ended. `next()` is gentler: with nothing queued it just returns False. Fix the call; the session keeps running.
+
 ## Client vs player
 
 `Client.error` (low level) explains why one connection closed. `Player.error` is the session-level verdict, set only when the player gave up for good.

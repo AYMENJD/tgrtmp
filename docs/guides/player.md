@@ -50,3 +50,45 @@ player.stats
 ```
 
 `bitrate_kbps` is also a property on its own: a ~10 second rolling average of the stream throughput.
+
+## Playlists
+
+Every queue control is a Player method; there is no second object to manage. The queue accepts paths, open files, or live byte streams, and it plays on the same connection: no reconnect, no gap, and the timeline keeps moving forward, so viewers never see a rewind.
+
+```python
+player = tgrtmp.publish("intro.mp4", url, key, playlist=["a.mp4", "b.mp4"])
+
+player.add("c.mp4")          # append; plays after everything queued
+player.play_next("d.mp4")    # jump the queue: right after the current media
+player.move(2, 0)            # reorder pending items
+player.remove(0)             # drop a pending item (the playing one is safe)
+player.remove_next()         # drop whatever would play next
+player.clear()               # drop everything pending
+player.next()                # skip: finish the current media early
+player.has_next()            # would next() switch right now
+```
+
+`next()` is a no-op (returns `False`) when nothing is queued. A skip does not fire `on_media_end`; a media that reaches its end on its own does.
+
+`player.playlist` is a read view for display: `playlist.index` is the playing item (None before it starts), `playlist.items` snapshots the list.
+
+`loop="all"` cycles the whole queue, which turns a list of files into an endless channel:
+
+```python
+player = tgrtmp.publish("movie.mp4", url, key, playlist=["movie2.mp4"], loop="all")
+```
+
+`loop=True` is rejected when a playlist is given: the first file would restart forever and the queue would never move. Cycle the queue with `loop="all"` instead, or keep `loop=True` for a player without one.
+
+The mode is writable mid-stream: `player.loop = False` stops looping at the next end of media, `player.loop = "all"` starts cycling the queue. Setting `loop = True` is rejected while the queue still has pending items; clear it first.
+
+When the queue drains without a loop, the player holds its last frame, exactly like a single file that ends; `on_media_end` fires once per media, which is where you can chain more:
+
+```python
+def on_media_end(player):
+    player.add(next_episode())
+
+player = tgrtmp.publish("episode1.mp4", url, key, on_media_end=on_media_end)
+```
+
+A runnable version of all of this lives in [`examples/playlist.py`](https://github.com/AYMENJD/tgrtmp/blob/main/examples/playlist.py): a terminal channel where `n` skips, `a FILE` queues, `pn FILE` jumps the queue, `c` clears, and `i` prints what is playing.

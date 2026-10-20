@@ -18,6 +18,7 @@
 - **High Performance**: Demuxing, pacing, and sending run in a fast native engine
 - **Zero Transcoding**: H.264/AAC frames pass through untouched
 - **Player Controls**: Pause, play, mute, and a live position, VLC-style, from any thread
+- **Playlists**: Queue files, skip, reorder, and chain episodes while live; it all plays on one connection
 - **Endless Channels**: Looping restarts a file on the same timeline: one uninterrupted stream, forever
 - **DVR for Live Sources**: Any growing `.read(n)` handle, with an opt-in rolling window (`buffer_size`) that lets pause hold its point
 
@@ -79,6 +80,15 @@ Turn it into a 24/7 channel:
 
 ```python
 player = tgrtmp.publish("movie.mp4", url, key, loop=True)
+```
+
+Queue a playlist and edit it while live:
+
+```python
+player = tgrtmp.publish("intro.mp4", url, key, playlist=["a.mp4", "b.mp4"])
+
+player.next()            # skip the intro
+player.add("c.mp4")      # append to the queue
 ```
 
 For more examples, check the [examples](https://github.com/AYMENJD/tgrtmp/tree/main/examples) folder.

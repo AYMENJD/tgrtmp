@@ -59,7 +59,7 @@ Install, publish a file, go live from a live source.
 
 ## Run the show
 
-Pause, mute, loop, reconnect, watch the numbers.
+Pause, mute, loop, queue, skip, reconnect, watch the numbers.
 
 [Player](guides/player.md)
 [The live window](guides/live-window.md)

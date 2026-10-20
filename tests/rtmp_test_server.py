@@ -52,6 +52,7 @@ class RtmpTestServer:
         self.published = threading.Event()
         self.metadata = None
         self._sock = None
+        self._listener = None
         self._parser = None
         self._thread = None
         self.port = None
@@ -61,6 +62,7 @@ class RtmpTestServer:
         listener.bind(("127.0.0.1", 0))
         listener.listen(1)
         self.port = listener.getsockname()[1]
+        self._listener = listener
         self._thread = threading.Thread(
             target=self._serve, args=(listener,), daemon=True
         )
@@ -68,6 +70,21 @@ class RtmpTestServer:
         return self
 
     def __exit__(self, *exc):
+        # A serve thread still waiting in accept() only wakes when a
+        # connection arrives: dial our own port so a server no client ever
+        # reached does not stall the teardown on the join timeout.
+        if self.port is not None and self._sock is None:
+            try:
+                socket.create_connection(("127.0.0.1", self.port), timeout=1).close()
+            except OSError:
+                pass
+
+        if self._listener is not None:
+            try:
+                self._listener.close()
+            except OSError:
+                pass
+
         if self._sock is not None:
             try:
                 self._sock.close()

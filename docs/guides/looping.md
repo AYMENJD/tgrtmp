@@ -17,6 +17,14 @@ while not player.stopped:
     time.sleep(1)
 ```
 
+`loop="all"` applies the same idea to a [playlist](player.md#playlists): the queue cycles back to its first item when it drains, one uninterrupted stream across all files.
+
+```python
+player = tgrtmp.publish("a.mp4", url, key, playlist=["b.mp4", "c.mp4"], loop="all")
+```
+
+A player with a playlist rejects `loop=True`: the first file would restart forever and the queue would never move. Cycle the queue with `loop="all"` instead, or keep `loop=True` for a player without one.
+
 ## What loop is not
 
 - Not a restart: no teardown, no handshake, no gap in the stream.
@@ -26,7 +34,7 @@ while not player.stopped:
 
 ```python
 player = tgrtmp.publish(
-    "playlist_item.mp4",
+    "movie.mp4",
     url,
     key,
     loop=True,

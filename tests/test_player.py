@@ -119,11 +119,17 @@ def factory(media):
     def make(source=None, **kwargs):
         server = RtmpTestServer()
         server.__enter__()
-        source = source if source is not None else media["ts"]
-        kwargs.setdefault("log", lambda message: None)
-        player = tgrtmp.publish(
-            source, URL.format(server.port), "key", freeze_interval=0.1, **kwargs
-        )
+
+        try:
+            source = source if source is not None else media["ts"]
+            kwargs.setdefault("log", lambda message: None)
+            player = tgrtmp.publish(
+                source, URL.format(server.port), "key", freeze_interval=0.1, **kwargs
+            )
+        except BaseException:
+            server.__exit__()
+            raise
+
         made.append((player, server))
         return player, server
 
@@ -380,6 +386,222 @@ def test_on_connection_survives_a_bad_callback(factory):
     )
     player.stop()
     assert events == [True, False]
+
+
+def test_media_switch_keeps_one_connection(factory, sample2, sample10):
+    """play_next() from on_media_end chains the next file onto the same
+    connection: no reconnect, and the stream timeline keeps moving."""
+    ends = []
+
+    def on_media_end(player):
+        ends.append(round(player.position, 1))
+
+        if len(ends) == 1:
+            player.play_next(sample10)
+
+    messages = []
+    player, server = factory(sample2, on_media_end=on_media_end, log=messages.append)
+
+    assert wait_for(lambda: len(ends) == 1), "on_media_end never fired"
+
+    # The next file plays past the first one's length: only a switch can
+    # move the position that far (a hold freezes it at the first's end).
+    assert wait_for(lambda: player.position > 4.0, 30), "the next media never played"
+
+    connects = sum(1 for m in messages if m.startswith("Connected to"))
+    assert connects == 1, f"the switch reconnected ({connects} handshakes)"
+
+    # The second file ends too: the callback fires again, and the player
+    # holds its last frame with the session still up.
+    assert wait_for(lambda: len(ends) == 2, 30), "the second end never fired"
+    assert player.connected, "the session dropped while holding"
+
+    sent = player.frames_sent
+    assert wait_for(lambda: player.frames_sent >= sent + 3), (
+        "the ended player stopped sending"
+    )
+    player.stop()
+
+
+def test_play_next_after_the_player_ended_raises(factory, sample2):
+    player, _ = factory(sample2)
+    player.stop()
+
+    with pytest.raises(RuntimeError):
+        player.play_next(sample2)
+
+
+def test_remove_next_drops_the_queued_media(factory, sample2, sample10):
+    ends = []
+    player, _ = factory(sample2, on_media_end=lambda player: ends.append(1))
+
+    player.play_next(sample10)
+    assert player.remove_next() is True
+    assert player.remove_next() is False, "remove lied about the queue"
+
+    # The first file ends and stays ended: nothing takes over, the session
+    # keeps holding the last frame.
+    assert wait_for(lambda: len(ends) == 1), "on_media_end never fired"
+
+    time.sleep(3)
+    assert player.position < 3.5, "the removed media played anyway"
+    assert player.connected, "the session dropped instead of holding"
+
+    sent = player.frames_sent
+    assert wait_for(lambda: player.frames_sent >= sent + 3), (
+        "the ended player stopped sending"
+    )
+    player.stop()
+
+
+def test_playlist_plays_in_order_on_one_connection(factory, sample2):
+    messages = []
+    player, _ = factory(
+        sample2,
+        playlist=[sample2, sample2],
+        log=messages.append,
+        on_media_end=lambda p: None,
+    )
+    playlist = player.playlist
+
+    # The constructor source plays first, then the items in order.
+    assert wait_for(lambda: playlist.index == 0, 30), "the first item never played"
+    assert wait_for(lambda: playlist.index == 1, 30), "the second item never played"
+    assert len(playlist.items) == 2
+
+    connects = sum(1 for m in messages if m.startswith("Connected to"))
+    assert connects == 1, f"the playlist reconnected ({connects} handshakes)"
+
+    # The list is drained: the player holds its last frame with the session
+    # still up.
+    assert player.has_next() is False
+
+    sent = player.frames_sent
+    assert wait_for(lambda: player.frames_sent >= sent + 3), (
+        "the ended player stopped sending"
+    )
+    player.stop()
+
+
+def test_next_skips_to_the_playlist_item(factory, sample2):
+    ends = []
+    player, _ = factory(
+        sample2, playlist=[sample2], on_media_end=lambda player: ends.append(1)
+    )
+
+    assert wait_for(lambda: player.position > 0.5), "the first media never played"
+    assert player.next() is True
+    assert wait_for(lambda: player.playlist.index == 0, 15), "the skip never switched"
+
+    time.sleep(1.5)
+    assert ends == [], "the skip fired on_media_end"
+
+    # The last item ends naturally: now the end fires.
+    assert wait_for(lambda: ends == [1], 30), "the natural end never fired"
+    player.stop()
+
+
+def test_next_with_an_empty_playlist_is_a_no_op(factory, sample2):
+    player, _ = factory(sample2)
+    assert wait_for(lambda: player.position > 0.3), "never played"
+
+    assert player.next() is False, "next switched with nothing queued"
+    assert player.has_next() is False
+
+    time.sleep(1.5)
+    assert player.connected, "the session dropped on a no-op skip"
+    player.stop()
+
+
+def test_loop_all_cycles_the_playlist(factory, sample2):
+    player, _ = factory(sample2, playlist=[sample2, sample2], loop="all")
+    playlist = player.playlist
+
+    assert wait_for(lambda: playlist.index == 0, 45), "the first item never played"
+    assert wait_for(lambda: playlist.index == 1, 45), "the second item never played"
+    assert wait_for(lambda: playlist.index == 0, 45), "the playlist never wrapped"
+    player.stop()
+
+
+def test_loop_true_is_rejected_with_a_playlist(factory, sample2, sample10):
+    with pytest.raises(ValueError):
+        factory(sample2, playlist=[sample10], loop=True)
+
+
+def test_queue_adds_are_rejected_while_looping_one_file(factory, sample2, sample10):
+    player, _ = factory(sample2, loop=True)
+    assert wait_for(lambda: player.position > 0.3), "never played"
+
+    with pytest.raises(ValueError):
+        player.add(sample10)
+
+    with pytest.raises(ValueError):
+        player.play_next(sample10)
+
+    player.stop()
+
+
+def test_loop_is_writable_mid_stream(factory, sample2, sample10):
+    player, _ = factory(sample2, playlist=[sample10])
+
+    with pytest.raises(ValueError):
+        player.loop = True  # The queue still has pending items.
+
+    player.clear()
+    player.loop = True
+
+    with pytest.raises(ValueError):
+        player.loop = "sometimes"
+
+    player.stop()
+
+
+def test_loop_can_be_turned_off_mid_stream(factory, sample2):
+    player, _ = factory(sample2, loop=True)
+    assert wait_for(lambda: player.position > 0.4), "never played"
+
+    player.loop = False
+
+    # The 2s file ends; a loop would have wrapped the position by now.
+    time.sleep(3)
+    assert player.stats["loops"] == 0, "the file looped after loop = False"
+    assert player.position > 1.7, "the position wrapped: it looped"
+    assert player.connected, "the session dropped instead of holding"
+    player.stop()
+
+
+def test_playlist_rejects_removing_the_playing_item(factory, sample2, sample10):
+    player, _ = factory(sample2, playlist=[sample10, sample2])
+    playlist = player.playlist
+
+    assert wait_for(lambda: playlist.index == 0, 30), "the first item never played"
+
+    with pytest.raises(ValueError):
+        player.remove(0)
+
+    with pytest.raises(IndexError):
+        player.remove(99)
+
+    player.stop()
+
+
+def test_add_move_and_clear_control_the_queue(factory, sample2, sample10):
+    player, _ = factory(sample2)
+    assert wait_for(lambda: player.position > 0.3), "never played"
+
+    assert player.add(sample10) == 0
+    assert player.add(sample2) == 1
+
+    player.move(1, 0)
+    assert player.playlist.items == [sample2, sample10], "the move did not reorder"
+
+    assert player.remove_next() is True
+    assert player.playlist.items == [sample10], "remove_next dropped the wrong item"
+
+    player.clear()
+    assert player.playlist.items == [], "clear left items behind"
+
+    player.stop()
 
 
 def test_mute_drops_audio_only(factory, sample10):

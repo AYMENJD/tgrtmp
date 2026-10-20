@@ -33,6 +33,25 @@ while not player.stopped:
 
 More in [`examples/endless_channel.py`](https://github.com/AYMENJD/tgrtmp/blob/main/examples/endless_channel.py).
 
+## A playlist channel
+
+Several files, one connection: the queue plays in order, and you edit it while live. `player.next()` skips to the next item, `play_next()` jumps the queue, `clear()` drops the pending items; see [playlists](guides/player.md#playlists) for the full control surface.
+
+```python
+player = tgrtmp.publish(
+    "intro.mp4",
+    url,
+    key,
+    playlist=["movie.mp4", "extra.mp4"],
+    log=print,
+)
+
+player.next()          # skip the intro
+player.add("b_roll.mp4")
+```
+
+More in [`examples/playlist.py`](https://github.com/AYMENJD/tgrtmp/blob/main/examples/playlist.py): a runnable terminal channel where `n` skips, `a FILE` queues, `pn FILE` jumps the queue, `c` clears, `i` shows what is playing.
+
 ## Relay a live source
 
 Any growing `.read(n)` handle, with the DVR window sized in megabytes:

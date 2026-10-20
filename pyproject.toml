@@ -55,6 +55,10 @@ docs = [
     "mkdocs-gen-files",
     "mkdocs-literate-nav",
 ]
+test = [
+    "pytest",
+    "pytest-xdist",
+]
 
 [tool.scikit-build]
 wheel.packages = ["tgrtmp"]
