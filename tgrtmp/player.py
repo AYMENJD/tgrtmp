@@ -7,7 +7,7 @@ import weakref
 from urllib.parse import urlsplit
 
 from ._core import CollectorSink, Publisher, Source, connect
-from .client import ZERO_MEDIA, _tail_moov
+from .client import _connected_message, ZERO_MEDIA, _tail_moov
 
 __all__ = ["Player", "publish"]
 
@@ -706,7 +706,7 @@ class Player:
         self._client = client
         self._pub.attach(client)
 
-        self.log(f"Connected to {urlsplit(url).hostname or url} in {elapsed_ms:.0f}ms")
+        self.log(_connected_message(url, client.remote, elapsed_ms))
         self._fire_connection(True)
 
         # A fresh session starts its own pass: recovery and zero-frame

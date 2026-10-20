@@ -364,6 +364,8 @@ NB_MODULE(_core, m) {
     nb::class_<Client>(m, "Client")
         .def_prop_ro("is_closed", &Client::is_closed,
                      "Whether the connection is closed: the publisher has to reconnect.")
+        .def_prop_ro("remote", &Client::remote,
+                     "The IP address the connection actually reached.")
         .def_prop_ro("error", &Client::error, "Why the connection was closed, if by an error.")
         .def("close", &Client::close, "Stop publishing and close the connection.")
         .def("wait_closed", &Client::await_close, nb::arg("timeout") = 0.0, release_gil(),

@@ -182,6 +182,15 @@ def needs_transcode(source) -> bool:
                 pass
 
 
+def _connected_message(url, remote, elapsed_ms):
+    """The one-line connection notice: the host, its numeric address when
+    the two differ, and how long reaching it took."""
+    host = urlsplit(url).hostname or url
+    address = f" ({remote})" if remote and remote != host else ""
+
+    return f"Connected to {host}{address} in {elapsed_ms:.0f}ms"
+
+
 class SourceError(RuntimeError):
     """The published source is broken (bad container, unsupported codec):
     reconnecting cannot help, so :func:`stream` propagates it."""
@@ -309,9 +318,7 @@ def stream(
 
                 publisher.attach(client)
 
-                log(
-                    f"Connected to {urlsplit(url).hostname or url} in {elapsed_ms:.0f}ms"
-                )
+                log(_connected_message(url, client.remote, elapsed_ms))
                 delay = reconnect_delay
 
                 src = _Source(publisher)

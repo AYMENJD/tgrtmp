@@ -68,6 +68,9 @@ class Client {
 
     bool is_closed() const { return closed_.load(std::memory_order_acquire); }
 
+    // The numeric IP address the connection reached, valid once connected.
+    const std::string &remote() const { return remote_; }
+
     // Why the connection was closed; empty if closed without an error.
     std::string error() const {
         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -117,6 +120,7 @@ class Client {
     Options options_;
     bool tls_ = false;
     std::string host_, app_, tc_url_, key_;
+    std::string remote_;      // The numeric address the connection reached.
     uint16_t port_ = 1935;
 
     int fd_ = -1;             // Platform socket.

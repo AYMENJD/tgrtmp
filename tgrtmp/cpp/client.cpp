@@ -227,7 +227,8 @@ void Client::close() {
 namespace {
 
 // Resolve + connect with a timeout; returns a blocking socket.
-socket_t connect_tcp(const std::string &host, uint16_t port, double timeout_s) {
+socket_t connect_tcp(const std::string &host, uint16_t port, double timeout_s,
+                     std::string &remote_ip) {
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -290,6 +291,13 @@ socket_t connect_tcp(const std::string &host, uint16_t port, double timeout_s) {
         int no_delay = 1;
         ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &no_delay, sizeof(no_delay));
 #endif
+        // The numeric address this socket actually reached: the log shows the
+        // server behind the name, and DNS may answer differently each call.
+        char address[NI_MAXHOST] = "";
+        ::getnameinfo(ai->ai_addr, ai->ai_addrlen, address, sizeof(address), nullptr, 0,
+                      NI_NUMERICHOST);
+        remote_ip = address;
+
         freeaddrinfo(list);
         return fd;
     }
@@ -340,7 +348,8 @@ std::unique_ptr<Client> Client::publish(std::string_view url, std::string_view k
                       (explicit_port ? ":" + std::to_string(client->port_) : "") + "/" +
                       client->app_;
 
-    client->fd_ = connect_tcp(client->host_, client->port_, options.connect_timeout_s);
+    client->fd_ = connect_tcp(client->host_, client->port_, options.connect_timeout_s,
+                              client->remote_);
     if (client->tls_) {
         SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
         if (!ctx)
