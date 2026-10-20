@@ -1,6 +1,7 @@
 # tgrtmp
 
 [![Version](https://img.shields.io/pypi/v/tgrtmp?style=flat&logo=pypi)](https://pypi.org/project/tgrtmp)
+[![Python versions](https://img.shields.io/pypi/pyversions/tgrtmp?style=flat&logo=python)](https://pypi.org/project/tgrtmp)
 [![Downloads](https://img.shields.io/pepy/dt/tgrtmp?style=flat&logo=pypi)](https://pypi.org/project/tgrtmp)
 [![Docs](https://img.shields.io/badge/Documentation-229ED9?style=flat)](https://tgrtmp.pages.dev)
 
