@@ -18,7 +18,7 @@
 - **High Performance**: Demuxing, pacing, and sending run in a fast native engine
 - **Zero Transcoding**: H.264/AAC frames pass through untouched
 - **Player Controls**: Pause, play, mute, and a live position, VLC-style, from any thread
-- **Endless Channels**: `loop=True` restarts a file on the same timeline: one uninterrupted stream, forever
+- **Endless Channels**: Looping restarts a file on the same timeline: one uninterrupted stream, forever
 - **DVR for Live Sources**: Any growing `.read(n)` handle, with an opt-in rolling window (`buffer_size`) that lets pause hold its point
 
 ### Compatibility
