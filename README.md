@@ -22,14 +22,6 @@
 - **Endless Channels**: Looping restarts a file on the same timeline: one uninterrupted stream, forever
 - **DVR for Live Sources**: Any growing `.read(n)` handle, with an opt-in rolling window (`buffer_size`) that lets pause hold its point
 
-### Compatibility
-
-`tgrtmp` is compatible with the following platforms:
-
-- **Linux** (`x64`, `ARM64`) — Debian 8+, Ubuntu 13.10+, Fedora 19+, RHEL 7+
-- **Windows** (`x64`) — Windows 7+
-- **macOS** (`M-series`) — macOS 11+
-
 ### Requirements
 
 - Python 3.10+
