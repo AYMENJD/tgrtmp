@@ -15,3 +15,6 @@ __all__ = [
     "stream",
     "__version__",
 ]
+
+__copyright__ = "Copyright (c) 2026 AYMENJD"
+__license__ = "MIT License"
