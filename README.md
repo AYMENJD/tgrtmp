@@ -91,6 +91,12 @@ player.next()            # skip the intro
 player.add("c.mp4")      # append to the queue
 ```
 
+Not sure about a file? Ask before you stream:
+
+```python
+tgrtmp.needs_transcode("clip.mkv")   # True means: transcode it first
+```
+
 For more examples, check the [examples](https://github.com/AYMENJD/tgrtmp/tree/main/examples) folder.
 
 ### Documentation

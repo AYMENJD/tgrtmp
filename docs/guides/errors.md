@@ -2,6 +2,19 @@
 
 Two kinds of failure, two behaviors.
 
+## Ask before streaming
+
+[`needs_transcode`][tgrtmp.needs_transcode] tells you whether a file publishes as is or must be re-encoded first (H.264 video, AAC audio):
+
+```python
+import tgrtmp
+
+if tgrtmp.needs_transcode("clip.mkv"):
+    print("transcode it: ffmpeg -i clip.mkv -c:v libx264 -c:a aac clip.mp4")
+```
+
+The check runs the same demuxers that would stream the file, so its answer is the publisher's answer: an unsupported container, non-H.264 video, non-AAC audio, or no video track all read True.
+
 ## Drops: retried
 
 Network failures, server resets, TLS timeouts: the session dies, the player backs off (1 s doubling to 30 s) and reconnects. Nothing raises; `log` and [`on_connection`](reconnecting.md) narrate.

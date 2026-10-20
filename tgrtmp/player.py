@@ -216,7 +216,9 @@ class Player:
         self._max_reconnect_delay = max_reconnect_delay
         self._freeze_interval = max(0.05, float(freeze_interval))
         self._loop = loop
-        self._playlist = playlist if isinstance(playlist, _Playlist) else _Playlist(playlist)
+        self._playlist = (
+            playlist if isinstance(playlist, _Playlist) else _Playlist(playlist)
+        )
 
         self._loop_base = 0
         self._loops = 0

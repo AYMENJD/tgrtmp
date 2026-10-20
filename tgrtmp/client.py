@@ -1,9 +1,10 @@
 import os
 import time
-
 from urllib.parse import urlsplit
 
-from ._core import Publisher as _Publisher, Source as _Source, connect
+from ._core import CollectorSink, connect
+from ._core import Publisher as _Publisher
+from ._core import Source as _Source
 
 # A source that ends without producing one frame is broken, and no control
 # path should spin or sit silently on it.
@@ -73,6 +74,112 @@ def _tail_moov(handle):
         return None
 
     return None
+
+
+# How much of a source the probe reads before concluding: container headers
+# and the first frames live in the first megabytes of any supported file.
+_PROBE_BYTES = 8 * 1024 * 1024
+
+# Media between the video track appearing and the audio verdict: interleaved
+# audio follows the first keyframe within kilobytes.
+_PROBE_AUDIO_BYTES = 512 * 1024
+
+
+def needs_transcode(source) -> bool:
+    """Whether ``source`` must be transcoded before it can be published.
+
+    Accepts a path or an open seekable binary file: True means the container is
+    unsupported, the video is not H.264, the audio is not AAC, or there is
+    no video track; False means it can be published as is. It samples the
+    head of the source (a few megabytes), so a pathological file that hides
+    its headers deeper than that reads as needing a transcode.
+    """
+    if isinstance(source, (str, os.PathLike)):
+        handle, managed = open(source, "rb"), True
+    else:
+        handle, managed = source, False
+
+    try:
+        handle.seek(0)
+    except (OSError, ValueError, AttributeError):
+        if managed:
+            handle.close()
+
+        raise ValueError(
+            "needs_transcode reads a file; pass a path or a seekable file"
+        ) from None
+
+    try:
+        head = handle.read(8)
+        collector = CollectorSink()
+        src = _Source(collector)
+
+        if len(head) < 8:
+            return True  # Not enough bytes to be any supported container.
+
+        tail = None
+
+        if head[4:8] == b"ftyp":
+            tail = _tail_moov(handle)  # Seeks around; None for a front moov.
+
+        handle.seek(0)
+        chunks = iter(_read_chunks(handle))
+
+        # The first feed sniffs the container; priming needs that verdict,
+        # so it only comes after (the player recovers the same way).
+        try:
+            src.feed(next(chunks, b""))
+        except RuntimeError:
+            return True
+
+        offset = 0 if tail is not None else None
+
+        if offset is not None:
+            try:
+                src.prime(tail[0])
+            except RuntimeError:
+                return True  # A moov the demuxers refuse is a transcode case.
+
+            handle.seek(0)
+
+        fed = 0
+
+        for chunk in chunks:
+            try:
+                if offset is None:
+                    src.feed(chunk)
+
+                else:
+                    src.feed_at(chunk, offset)
+                    offset += len(chunk)
+
+            except RuntimeError:
+                return True  # The demuxers refuse what publishing would refuse.
+
+            fed += len(chunk)
+
+            if collector.warnings:
+                return True  # Codec complaints: the same ones publishing logs.
+
+            if collector.has_video and fed >= _PROBE_AUDIO_BYTES:
+                break
+
+            # The frames were only needed for the verdict: dropping them
+            # keeps the probe's memory at one chunk instead of the sample.
+            collector.clear()
+
+            if fed >= _PROBE_BYTES:
+                break
+
+        return not collector.has_video
+    finally:
+        if managed:
+            handle.close()
+        else:
+            try:
+                handle.seek(0)
+            except (OSError, ValueError, AttributeError):
+                pass
 
 
 class SourceError(RuntimeError):
