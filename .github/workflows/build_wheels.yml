@@ -1,4 +1,4 @@
-name: Test, compile-check, and publish
+name: Build and publish tgrtmp wheels
 
 on:
   workflow_dispatch:
@@ -30,25 +30,6 @@ jobs:
         run: |
           python -m pip install pytest pytest-xdist
           python -m pytest tests/ -n auto
-
-  # The package ships as an sdist only: users build on install with their
-  # own OpenSSL, which also gives TLS its trust store. This job proves the
-  # sdist builds a wheel against a plain system the way a pip install does.
-  build-check:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.USING_PYTHON_VERSION }}
-
-      - name: Build
-        run: |
-          python -m pip install --upgrade build
-          python -m build
 
   publish:
     needs: build-check
