@@ -32,7 +32,7 @@ jobs:
           python -m pytest tests/ -n auto
 
   publish:
-    needs: build-check
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
