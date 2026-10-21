@@ -513,6 +513,77 @@ def test_next_with_an_empty_playlist_is_a_no_op(factory, sample2):
     player.stop()
 
 
+def test_a_source_timeline_reset_keeps_the_position_sane(factory, media, tmp_path):
+    """Two concatenated copies of one file restart the timestamps at the
+    seam: a new timeline must reset the position, not drag it negative,
+    and the wire must keep flowing through the jump."""
+    doubled = str(tmp_path / "doubled.ts")
+
+    with open(media["ts"], "rb") as source:
+        data = source.read()
+
+    with open(doubled, "wb") as out:
+        out.write(data * 2)
+
+    player, _ = factory(doubled)
+
+    # The seam restarts the timeline: after playing into the first copy,
+    # the position visibly falls back (wherever the clean frames resume)
+    # and never below zero.
+    seen_high = False
+    low = None
+    deadline = time.monotonic() + 20
+
+    while time.monotonic() < deadline:
+        position = player.position
+
+        if position > 2.0:
+            seen_high = True
+            low = position if low is None else min(low, position)
+
+        if seen_high and position < low - 0.3:
+            break
+
+        time.sleep(0.05)
+    else:
+        pytest.fail("the seam never restarted the timeline")
+
+    assert position >= 0.0, "the position went negative across the seam"
+    assert player.connected, "the jump killed the session"
+
+    sent = player.frames_sent
+    assert wait_for(lambda: player.frames_sent >= sent + 3), "the wire went silent"
+    player.stop()
+
+
+def test_a_silent_wire_reconnects(factory, sample10, monkeypatch):
+    """A session that stops sending while the source keeps producing is a
+    zombie the server has given up on: the player must reconnect it."""
+    real = tgrtmp.player.Publisher
+
+    class Silent:
+        def __init__(self, *args, **kwargs):
+            self.inner = real(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        @property
+        def frames_sent(self):
+            return 0
+
+    monkeypatch.setattr(tgrtmp.player, "Publisher", Silent)
+    messages = []
+    player, _ = factory(sample10, log=messages.append)
+    player._stall_seconds = 1.0
+
+    assert wait_for(
+        lambda: sum(1 for m in messages if m.startswith("Connected to")) >= 2, 30
+    ), "the silent session was never recycled"
+    assert not player.stopped, "the player died instead of reconnecting"
+    player.stop()
+
+
 def test_loop_all_cycles_the_playlist(factory, sample2):
     player, _ = factory(sample2, playlist=[sample2, sample2], loop="all")
     playlist = player.playlist

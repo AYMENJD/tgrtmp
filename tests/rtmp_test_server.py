@@ -101,21 +101,28 @@ class RtmpTestServer:
             view = view[sent:]
 
     def _serve(self, listener):
-        try:
-            sock, _ = listener.accept()
-        except OSError:
-            return
-        self._sock = sock
-        try:
-            self._session()
-        except (OSError, ValueError):
-            pass
-        finally:
-            self.closed_by_client.set()
+        # Serves connections one after another: a player that reconnects
+        # must find the server still there.
+        while True:
             try:
-                sock.close()
+                sock, _ = listener.accept()
             except OSError:
+                return
+
+            self._sock = sock
+            try:
+                self._session()
+            except (OSError, ValueError):
                 pass
+            finally:
+                self.closed_by_client.set()
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+
+            self._sock = None
+            self._parser = None
 
     def _session(self):
         # Handshake: C0+C1 in, S0+S1+S2 out, C2 in.

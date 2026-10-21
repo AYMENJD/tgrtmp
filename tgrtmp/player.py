@@ -222,6 +222,7 @@ class Player:
 
         self._loop_base = 0
         self._loops = 0
+        self._stall_seconds = 15.0  # Telegram drops a silent publisher at 10s.
         self._on_connection = on_connection
         self._on_media_end = on_media_end
         self._connected = False
@@ -605,6 +606,14 @@ class Player:
                 if not muted:
                     self._pub.feed_audio(pts, frame["config"], frame["data"])
 
+        if collector.jumps:
+            # The batch that carried the jump straddles two timelines, so
+            # its frames anchor nothing: a new source timeline measures the
+            # position from the next, clean batch.
+            with self._lock:
+                self._seg_base = 0.0
+                self._seg_dts = None
+
         collector.clear()
 
     def _run(self):
@@ -710,10 +719,16 @@ class Player:
         self._fire_connection(True)
 
         # A fresh session starts its own pass: recovery and zero-frame
-        # accounting reset with it.
+        # accounting reset with it, and the position measures from this
+        # session's first frame (a source timeline that reset behind our
+        # back must not leak in as hours of negative position).
         self._saw_media = False
         self._primed = False
         self._feed_pos = 0
+
+        with self._lock:
+            self._seg_base = 0.0
+            self._seg_dts = None
 
         self._src = Source(self._collector)
 
@@ -746,6 +761,13 @@ class Player:
             self._fire_connection(False)
 
     def _feed_loop(self):
+        # A live session that sends nothing while the source keeps
+        # producing is a dead wire wearing an open connection: Telegram's
+        # server drops a silent publisher after 10 seconds, so quiet past
+        # the stall bound means the session is gone or doomed; reconnect.
+        sent_mark = -1
+        quiet_since = None
+
         while not self._stopped:
             with self._lock:
                 skip = self._skip
@@ -814,6 +836,17 @@ class Player:
                 self._src.feed(chunk)
 
             self._relay()
+
+            sent = self._pub.frames_sent
+            if sent != sent_mark:
+                sent_mark = sent
+                quiet_since = None
+            elif quiet_since is None:
+                quiet_since = time.monotonic()
+            elif time.monotonic() - quiet_since >= self._stall_seconds:
+                raise ConnectionError(
+                    "the wire went silent while the source kept producing"
+                )
 
     def _install(self, source):
         """Swaps in a new source and starts its pass; the connection stays

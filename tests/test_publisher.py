@@ -115,6 +115,28 @@ def test_audio_sequence_header_and_frames(session):
     assert server.media[-1][3] == b"\xaf\x01A3"
 
 
+def test_a_discontinuity_storm_still_feeds_the_wire(session):
+    """A restarting source flags a discontinuity on packet after packet;
+    only the first may re-anchor: a generation bump per jump would clear
+    the queues under the sender's feet and silence the wire."""
+    server, client, publisher = session
+
+    publisher.feed_video(0, 0, keyframe(), True, b"C")
+    assert wait_for(lambda: len(server.media) >= 1)
+
+    before = len(server.media)
+
+    for index in range(30):
+        publisher.feed_video(
+            1000 + index * 33, 1000 + index * 33, interframe(), False, b""
+        )
+        publisher.on_discontinuity()
+
+    assert wait_for(lambda: len(server.media) > before + 5, timeout=5), (
+        "a discontinuity storm silenced the wire"
+    )
+
+
 def test_pacing_real_time(session):
     server, client, publisher = session
     # 15 video frames at 33 ms and matching audio; sends must be paced.

@@ -186,6 +186,7 @@ class Publisher : public FrameSink {
     std::condition_variable sender_cv_;
     std::condition_variable feed_cv_;
     uint64_t generation_ = 0; // Bumped on attach/detach/discontinuity/stop.
+    int64_t last_discontinuity_ms_ = 0;
     bool stopping_ = false;
 
     int64_t epoch_ = 0; // Steady ms at which the connection started.

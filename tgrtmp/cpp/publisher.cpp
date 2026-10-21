@@ -151,10 +151,21 @@ void Publisher::on_discontinuity() {
     // sequence headers and the metadata stay armed; the reference resets
     // them only on reconnect, and a re-sent dimensionless metadata mid-stream
     // can make the server commit the livestream to audio-only.
+    //
+    // A restarting source flags a discontinuity on packet after packet; every
+    // re-anchor would bump the generation and clear the queues under the
+    // sender's feet, and the wire would fall silent exactly when the stream
+    // needs it most (Telegram's server drops a publisher silent for 10s).
+    // One re-anchor per storm: the anchors are already fresh, later jumps
+    // within the window carry no new information.
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (client_ == nullptr)
             return;
+        const int64_t now = steady_ms();
+        if (now - last_discontinuity_ms_ < 2000)
+            return;
+        last_discontinuity_ms_ = now;
         audio_anchor_ = video_anchor_ = Anchor{};
         clear_queues();
         last_video_dts_ = -1;
