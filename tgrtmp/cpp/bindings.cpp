@@ -228,7 +228,7 @@ NB_MODULE(_core, m) {
         },
         nb::arg("chunk_stream"), nb::arg("type_id"), nb::arg("message_stream_id"),
         nb::arg("timestamp"), nb::arg("payload"), nb::arg("chunk_size") = 4096,
-        "Chunk one RTMP message, as the wire carries it.");
+        "Chunk one RTMP message, as the stream carries it.");
 
     m.def(
         "chunk_write_avc",
@@ -479,11 +479,17 @@ NB_MODULE(_core, m) {
         .def_prop_ro("connected", &Publisher::connected, "Whether a live connection is attached.")
         .def_prop_ro(
             "av_skew_ms", &Publisher::av_skew_ms,
-            "The wire skew of the audio timeline against the video one, in ms; zero until "
+            "The stream skew of the audio timeline against the video one, in ms; zero until "
             "both tracks are anchored, and constant for the session after that.")
         .def_prop_ro("frames_sent", &Publisher::frames_sent)
         .def_prop_ro("video_frames_sent", &Publisher::video_frames_sent)
         .def_prop_ro("bytes_sent", &Publisher::bytes_sent)
+        .def_prop_ro("send_blocked_ms", &Publisher::send_blocked_ms,
+                     "Cumulative time spent inside socket sends, in ms: grows fast on a "
+                     "connection that cannot drain the stream.")
+        .def_prop_ro("backlog_ms", &Publisher::backlog_ms,
+                     "How far the oldest queued frame is past its send time, in ms; "
+                     "near zero is healthy, growth means the connection cannot keep up.")
         .def_prop_ro("frames_dropped", &Publisher::frames_dropped);
 
     nb::class_<CollectorSink, FrameSink> collector(m, "CollectorSink");

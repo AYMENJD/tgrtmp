@@ -41,7 +41,7 @@ constexpr uint32_t VIDEO = 6;
 
 // Append one RTMP message, chunked at `out_chunk_size`, to `out`. The first
 // chunk carries a full type-0 header; continuation chunks carry type-3
-// headers with the extended timestamp echoed (MadelineProto's proven wire
+// headers with the extended timestamp echoed (MadelineProto's proven stream
 // behavior against Telegram's server).
 class ChunkWriter {
   public:

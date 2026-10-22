@@ -230,6 +230,7 @@ class Player:
 
         self._pub = Publisher(lookahead_ms=lookahead_ms, wait_video_ms=wait_video_ms)
         self._pub.set_logger(lambda message: self.log(f"warning: {message}"))
+        self._lookahead_ms = float(lookahead_ms)
 
         self._collector = CollectorSink()
         self._client = None
@@ -501,8 +502,21 @@ class Player:
 
     @property
     def av_skew_ms(self):
-        """The wire skew of the audio timeline against the video one, in ms."""
+        """The stream skew of the audio timeline against the video one, in ms."""
         return self._pub.av_skew_ms
+
+    @property
+    def backlog_ms(self):
+        """How far the oldest queued frame is past its send time, in ms.
+        Near zero is healthy; growth means the connection cannot carry the
+        stream as fast as the source produces it."""
+        return self._pub.backlog_ms
+
+    @property
+    def send_blocked_ms(self):
+        """Cumulative time spent inside socket sends, in ms: grows fast on
+        a slow connection."""
+        return self._pub.send_blocked_ms
 
     @property
     def bitrate_kbps(self):
@@ -544,6 +558,8 @@ class Player:
             "frames_dropped": self.frames_dropped,
             "window_bytes": self.window_bytes,
             "av_skew_ms": self.av_skew_ms,
+            "backlog_ms": self.backlog_ms,
+            "send_blocked_ms": self.send_blocked_ms,
             "error": self.error,
         }
 
@@ -762,11 +778,17 @@ class Player:
 
     def _feed_loop(self):
         # A live session that sends nothing while the source keeps
-        # producing is a dead wire wearing an open connection: Telegram's
+        # producing is a dead stream wearing an open connection: Telegram's
         # server drops a silent publisher after 10 seconds, so quiet past
         # the stall bound means the session is gone or doomed; reconnect.
         sent_mark = -1
         quiet_since = None
+
+        # A connection that cannot drain the feed leaves frames past their
+        # send time; saying so once a minute beats discovering it from the
+        # viewers.
+        backpressure_since = None
+        backpressure_last_log = 0.0
 
         while not self._stopped:
             with self._lock:
@@ -845,12 +867,29 @@ class Player:
                 quiet_since = time.monotonic()
             elif time.monotonic() - quiet_since >= self._stall_seconds:
                 raise ConnectionError(
-                    "the wire went silent while the source kept producing"
+                    "the stream went silent while the source kept producing"
                 )
+
+            backlog = self._pub.backlog_ms
+            now = time.monotonic()
+            if backlog >= 500:
+                if backpressure_since is None:
+                    backpressure_since = now
+                elif (
+                    now - backpressure_since >= 10.0
+                    and now - backpressure_last_log >= 60.0
+                ):
+                    backpressure_last_log = now
+                    self.log(
+                        f"warning: the connection is struggling to carry the stream "
+                        f"({backlog:.0f}ms of media backed up); it may stall"
+                    )
+            else:
+                backpressure_since = None
 
     def _install(self, source):
         """Swaps in a new source and starts its pass; the connection stays
-        up and the wire timeline continues past the previous media. Paths
+        up and the stream timeline continues past the previous media. Paths
         are opened here and closed when the next media starts."""
         managed = isinstance(source, (str, os.PathLike))
 
@@ -873,7 +912,7 @@ class Player:
         self.log("Switching to the next media")
 
     def _begin_pass(self):
-        """Starts a pass on the wire timeline: the offset climbs one
+        """Starts a pass on the stream timeline: the offset climbs one
         millisecond past the highest timestamp ever sent, so the pass never
         rewinds the stream or collides with the publisher's clamp."""
         with self._lock:

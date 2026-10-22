@@ -74,7 +74,7 @@ def test_gating_metadata_and_sequence_headers(session):
     assert wait_for(lambda: len(server.media) >= 2)
     assert server.metadata is not None
     assert server.metadata["videocodecid"] == 7.0
-    # The AVC sequence header precedes the keyframe on the wire.
+    # The AVC sequence header precedes the keyframe on the stream.
     assert server.media[0][0] == 9
     assert server.media[0][3] == b"\x17\x00\x00\x00\x00" + b"AVCCCONFIG"
     assert server.media[1][0] == 9
@@ -115,10 +115,10 @@ def test_audio_sequence_header_and_frames(session):
     assert server.media[-1][3] == b"\xaf\x01A3"
 
 
-def test_a_discontinuity_storm_still_feeds_the_wire(session):
+def test_a_discontinuity_storm_still_feeds_the_stream(session):
     """A restarting source flags a discontinuity on packet after packet;
     only the first may re-anchor: a generation bump per jump would clear
-    the queues under the sender's feet and silence the wire."""
+    the queues under the sender's feet and silence the stream."""
     server, client, publisher = session
 
     publisher.feed_video(0, 0, keyframe(), True, b"C")
@@ -133,7 +133,7 @@ def test_a_discontinuity_storm_still_feeds_the_wire(session):
         publisher.on_discontinuity()
 
     assert wait_for(lambda: len(server.media) > before + 5, timeout=5), (
-        "a discontinuity storm silenced the wire"
+        "a discontinuity storm silenced the stream"
     )
 
 
@@ -267,7 +267,7 @@ def test_mid_gop_join_holds_audio_for_keyframe():
                 publisher.feed_video(index * 33, index * 33, interframe(), False, b"")
                 publisher.feed_audio(index * 21, ASC, b"A%d" % index)
             time.sleep(0.3)
-            # Audio held: nothing on the wire yet, no metadata committed.
+            # Audio held: nothing on the stream yet, no metadata committed.
             assert server.media == []
             assert server.metadata is None
             assert publisher.frames_dropped >= 10
@@ -309,7 +309,7 @@ def test_audio_only_source_sends_dimensionless_metadata():
 
 def test_dvr_timeline_never_leaks_onto_the_wire(session):
     """The regression test for the 21-hour-video bug: a live DVR source
-    carries media timestamps of tens of hours; every wire message (the
+    carries media timestamps of tens of hours; every stream message (the
     sequence header included) must carry the wall-derived timestamp, or
     the server sees video hours ahead of audio and drops it."""
     server, client, publisher = session

@@ -1,5 +1,5 @@
 """Turn a media file into a 24/7 channel: with loop=True the file restarts at
-its end and every pass continues the same wire timeline, so viewers see one
+its end and every pass continues the same stream timeline, so viewers see one
 uninterrupted stream. A dashboard shows where it is.
 
     python endless_channel.py movie.mp4 --key YOUR_KEY

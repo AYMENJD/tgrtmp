@@ -12,7 +12,7 @@ from rtmp_test_server import RtmpTestServer
 from test_publisher import ASC, URL, interframe, keyframe, wait_for  # noqa: F401
 
 # An ASC with an explicit sampling frequency (index 15): unparseable for the
-# wire, rejected with a clear message by the reference too.
+# stream, rejected with a clear message by the reference too.
 BAD_ASC = bytes([0b0001_0111, 0b1000_0000])
 
 
@@ -40,7 +40,7 @@ def test_unsupported_audio_dropped_with_warning():
         publisher.feed_audio(21, BAD_ASC, b"A1")
         publisher.feed_video(0, 0, keyframe(), True, b"AVCC")
         time.sleep(0.2)
-        # The unsupported audio never reached the wire; the video flows; and
+        # The unsupported audio never reached the stream; the video flows; and
         # exactly one warning fired (not one per frame).
         assert all(m[0] != 8 for m in server.media)
         assert wait_for(lambda: any(m[0] == 9 for m in server.media))

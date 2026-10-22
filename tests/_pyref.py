@@ -1,4 +1,4 @@
-"""A compact pure-Python reference implementation of the same wire protocol
+"""A compact pure-Python reference implementation of the same stream protocol
 (AMF0, chunk stream, FLV tags), used as a test oracle and as the benchmark
 baseline. Written independently, from the same public specs."""
 

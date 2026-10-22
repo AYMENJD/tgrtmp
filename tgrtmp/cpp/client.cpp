@@ -376,7 +376,7 @@ std::unique_ptr<Client> Client::publish(std::string_view url, std::string_view k
 
     client->handshake_();
 
-    // Wire the parser to the message dispatcher. The handler borrows the
+    // Stream the parser to the message dispatcher. The handler borrows the
     // client; both live and die together (the parser is a member).
     Client &ref = *client;
     client->parser_.set_handler([&ref](uint8_t type_id, uint32_t timestamp_ms, uint32_t stream_id,

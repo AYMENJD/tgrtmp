@@ -57,7 +57,7 @@ class Client {
     // Send a video (FLV tag body) message; timestamp in milliseconds.
     void send_video(uint32_t timestamp_ms, std::string_view body);
 
-    // Send one video access unit straight from its Annex-B form: the wire
+    // Send one video access unit straight from its Annex-B form: the stream
     // bytes are built in a single pass (the fused hot path, byte-identical
     // to send_video with a pre-wrapped body, ~8x fewer copies).
     void send_video_annexb(uint32_t timestamp_ms, bool keyframe, std::string_view annexb,

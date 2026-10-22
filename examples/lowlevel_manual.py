@@ -1,4 +1,4 @@
-"""Under the Player, exposed: the wire-level API driven by hand.
+"""Under the Player, exposed: the stream-level API driven by hand.
 
 connect() opens the RTMP(S) session, the Publisher paces frames to real time
 (feed() blocks on a small lookahead window; feeding as fast as the file

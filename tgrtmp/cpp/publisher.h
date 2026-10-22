@@ -102,7 +102,7 @@ class Publisher : public FrameSink {
 
     bool connected() const;
 
-    // The wire skew of the audio timeline against the video one, in ms:
+    // The stream skew of the audio timeline against the video one, in ms:
     // how much later (positive) audio plays than video at equal media time.
     // Constant for the session once both tracks are anchored.
     int64_t av_skew_ms() const;
@@ -144,6 +144,13 @@ class Publisher : public FrameSink {
         return video_frames_sent_.load(std::memory_order_relaxed);
     }
     uint64_t bytes_sent() const { return bytes_sent_.load(std::memory_order_relaxed); }
+    uint64_t send_blocked_ms() const {
+        return static_cast<uint64_t>(send_blocked_ms_.load(std::memory_order_relaxed));
+    }
+
+    // How far the oldest queued frame is past its send time, in ms. Near
+    // zero is healthy; growth means the connection cannot drain the feed.
+    int64_t backlog_ms();
     uint64_t frames_dropped() const { return frames_dropped_.load(std::memory_order_relaxed); }
 
     void stop();
@@ -196,7 +203,7 @@ class Publisher : public FrameSink {
     bool keyframe_seen_ = false; // The first keyframe with a config arrived.
     int64_t awaiting_video_since_ = 0;
     int64_t last_video_dts_ = -1;
-    uint32_t last_sent_video_ts_ = 0, last_sent_audio_ts_ = 0; // Wire clamps.
+    uint32_t last_sent_video_ts_ = 0, last_sent_audio_ts_ = 0; // Stream clamps.
 
     std::function<void(const std::string &)> logger_;
     void *logger_obj_ = nullptr; // Owned PyObject* of the logger callable.
@@ -217,6 +224,7 @@ class Publisher : public FrameSink {
 
     std::atomic<uint64_t> frames_sent_{0}, video_frames_sent_{0}, bytes_sent_{0},
         frames_dropped_{0};
+    std::atomic<int64_t> send_blocked_ms_{0};
 };
 
 } // namespace tgrtmp

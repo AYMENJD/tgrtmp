@@ -140,7 +140,7 @@ def factory(media):
         server.__exit__()
 
 
-def test_position_advances_pause_freezes_wire_stays_alive(factory):
+def test_position_advances_pause_freezes_stream_stays_alive(factory):
     player, server = factory()
     assert wait_for(lambda: player.position > 0.3), "the position never advanced"
 
@@ -150,7 +150,7 @@ def test_position_advances_pause_freezes_wire_stays_alive(factory):
     time.sleep(1.0)
     assert abs(player.position - frozen) < 0.05, "the position ran while paused"
 
-    # A paused player keeps sending the freeze keyframes: the wire must not
+    # A paused player keeps sending the freeze keyframes: the stream must not
     # go silent (the server drops idle sessions).
     sent_at_pause = player.frames_sent
     assert wait_for(lambda: player.frames_sent >= sent_at_pause + 3), (
@@ -170,7 +170,7 @@ def test_loop_restarts_the_source(factory, sample2):
         "the player never looped"
     )
     assert wait_for(lambda: player.position > 1.2), "the second pass never played"
-    assert wait_for(lambda: video_count(server) > 40), "looping starved the wire"
+    assert wait_for(lambda: video_count(server) > 40), "looping starved the stream"
     player.stop()
 
 
@@ -207,14 +207,14 @@ def test_loop_never_spams_when_restart_yields_no_data(factory, sample2):
 
 
 def test_looping_stays_paced_past_the_third_pass(factory, sample2):
-    """Pass N must not replay pass N-1's wire timestamps: a colliding offset
+    """Pass N must not replay pass N-1's stream timestamps: a colliding offset
     trips the publisher's monotonic clamp, the pacer re-anchors to now, and
     the file blasts out unpaced (loop spam)."""
     player, server = factory(sample2, loop=True)
 
     assert wait_for(lambda: player.stats["loops"] >= 3, 60), "never looped thrice"
 
-    # The wire keeps real-time pace after the third restart: a 10 fps source
+    # The stream keeps real-time pace after the third restart: a 10 fps source
     # yields ~20 frames per 2 s window, not hundreds.
     sent = video_count(server)
     time.sleep(2.0)
@@ -224,7 +224,7 @@ def test_looping_stays_paced_past_the_third_pass(factory, sample2):
 
     timestamps = [m[1] for m in server.media if m[0] == 9]
     assert all(b > a for a, b in zip(timestamps, timestamps[1:])), (
-        "wire timestamps regressed across loop passes"
+        "stream timestamps regressed across loop passes"
     )
     player.stop()
 
@@ -256,7 +256,7 @@ def test_a_tail_moov_mp4_recovers_and_plays(factory, moov_at_end_mp4, loop):
     player, server = factory(moov_at_end_mp4, loop=loop)
 
     assert wait_for(lambda: player.position > 1.0, 30), "the recovered MP4 never played"
-    assert wait_for(lambda: video_count(server) > 5), "no video reached the wire"
+    assert wait_for(lambda: video_count(server) > 5), "no video reached the stream"
     assert player.error is None
 
     if loop:
@@ -267,7 +267,7 @@ def test_a_tail_moov_mp4_recovers_and_plays(factory, moov_at_end_mp4, loop):
 
 def test_a_tail_moov_mp4_without_seek_stays_loud(factory, moov_at_end_mp4):
     """A non-seekable handle cannot read its own tail: the player must stop
-    with the zero-media error instead of spinning or holding a dead wire."""
+    with the zero-media error instead of spinning or holding a dead stream."""
 
     class Unseekable:
         def __init__(self, path):
@@ -350,7 +350,7 @@ def test_stats_snapshot(factory):
     assert stats["frames_sent"] == player.frames_sent > 0
     assert stats["bytes_sent"] == player.bytes_sent > 0
     assert stats["window_bytes"] is None
-    # Both tracks anchor within the same relay batch: the wire skew is small.
+    # Both tracks anchor within the same relay batch: the stream skew is small.
     assert abs(stats["av_skew_ms"]) < 100, f"audio is {stats['av_skew_ms']}ms off video"
     assert isinstance(stats["bitrate_kbps"], float)
 
@@ -516,7 +516,7 @@ def test_next_with_an_empty_playlist_is_a_no_op(factory, sample2):
 def test_a_source_timeline_reset_keeps_the_position_sane(factory, media, tmp_path):
     """Two concatenated copies of one file restart the timestamps at the
     seam: a new timeline must reset the position, not drag it negative,
-    and the wire must keep flowing through the jump."""
+    and the stream must keep flowing through the jump."""
     doubled = str(tmp_path / "doubled.ts")
 
     with open(media["ts"], "rb") as source:
@@ -552,11 +552,11 @@ def test_a_source_timeline_reset_keeps_the_position_sane(factory, media, tmp_pat
     assert player.connected, "the jump killed the session"
 
     sent = player.frames_sent
-    assert wait_for(lambda: player.frames_sent >= sent + 3), "the wire went silent"
+    assert wait_for(lambda: player.frames_sent >= sent + 3), "the stream went silent"
     player.stop()
 
 
-def test_a_silent_wire_reconnects(factory, sample10, monkeypatch):
+def test_a_silent_stream_reconnects(factory, sample10, monkeypatch):
     """A session that stops sending while the source keeps producing is a
     zombie the server has given up on: the player must reconnect it."""
     real = tgrtmp.player.Publisher
@@ -681,7 +681,7 @@ def test_mute_drops_audio_only(factory, sample10):
     player.mute()
     video_at_mute = video_count(server)
 
-    # The queued audio (~1 s of look-ahead) drains first, then the wire goes
+    # The queued audio (~1 s of look-ahead) drains first, then the stream goes
     # audio-silent while the video keeps flowing.
     deadline = time.monotonic() + 15
     quiet = audio_count(server)

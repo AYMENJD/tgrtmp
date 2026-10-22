@@ -26,7 +26,7 @@ def amf_decode_all(data):
 
 def command(name, txn, *args):
     """An RTMP command message: name, transaction id, then the arguments;
-    sequential top-level AMF0 values, as the wire carries them."""
+    sequential top-level AMF0 values, as the stream carries them."""
     return amf_encode(name) + amf_encode(txn) + b"".join(amf_encode(a) for a in args)
 
 

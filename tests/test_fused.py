@@ -1,4 +1,4 @@
-"""The fused video wire path must be byte-identical to the staged one:
+"""The fused video stream path must be byte-identical to the staged one:
 write_avc_frame(annexb) == write_message(avc_frame(to_avcc(annexb)))."""
 
 import random

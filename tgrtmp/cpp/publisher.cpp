@@ -154,8 +154,8 @@ void Publisher::on_discontinuity() {
     //
     // A restarting source flags a discontinuity on packet after packet; every
     // re-anchor would bump the generation and clear the queues under the
-    // sender's feet, and the wire would fall silent exactly when the stream
-    // needs it most (Telegram's server drops a publisher silent for 10s).
+    // sender's feet, and the stream would fall silent exactly when it is
+    // needed most (Telegram's server drops a publisher silent for 10s).
     // One re-anchor per storm: the anchors are already fresh, later jumps
     // within the window carry no new information.
     {
@@ -176,6 +176,24 @@ void Publisher::on_discontinuity() {
     flush_warnings();
 }
 
+int64_t Publisher::backlog_ms() {
+    // How far the oldest queued frame is PAST its send time: a healthy
+    // stream keeps this near zero (the sender drains frames as they come
+    // due); a connection that cannot drain the feed grows it without
+    // bound. The queued span itself says nothing: healthy playback always
+    // holds about a look-ahead of media.
+    std::lock_guard<std::mutex> lock(mutex_);
+    const int64_t now = steady_ms();
+    int64_t oldest = INT64_MAX;
+    if (!audio_queue_.empty())
+        oldest = std::min(oldest, audio_queue_.front().due);
+    if (!video_queue_.empty())
+        oldest = std::min(oldest, video_queue_.front().due);
+    if (oldest == INT64_MAX)
+        return 0;
+    return std::max<int64_t>(0, now - oldest);
+}
+
 int64_t Publisher::anchor_due(Anchor &anchor, int64_t media_ms) {
     // Each track is paced by the clock of its source, anchored to the wall
     // clock from its first frame, as the reference implementation does.
@@ -187,7 +205,7 @@ int64_t Publisher::anchor_due(Anchor &anchor, int64_t media_ms) {
     // handles). A source that runs AHEAD of the wall clock (a live stream's
     // backfill bursts, which the reference's file player never produces)
     // keeps its future dues instead: the pacer holds the frames and the
-    // look-ahead throttle slows the feeder, so the wire stays at real time
+    // look-ahead throttle slows the feeder, so the stream stays at real time
     // and the timestamps never burst or repeat.
     int64_t now = steady_ms();
     if (anchor.wall != 0) {
@@ -247,7 +265,7 @@ void Publisher::feed_audio(int64_t pts_ms, std::string_view asc, std::string_vie
             frames_sent_.fetch_add(1, std::memory_order_relaxed);
         }
 
-        // Audio the server cannot carry must not silently ride the wire: an
+        // Audio the server cannot carry must not silently ride the stream: an
         // AudioSpecificConfig that does not parse (explicit sampling frequency,
         // program config element channels) is dropped with a warning, exactly as
         // the reference drops non-AAC audio; the stream continues without it.
@@ -339,11 +357,11 @@ void Publisher::feed_video(int64_t dts_ms, int64_t pts_ms, std::string_view anne
                          "'scale=1280:720:force_original_aspect_ratio=decrease,"
                          "pad=1280:720:(ow-iw)/2:(oh-ih)/2' -c:v libx264 -c:a aac output.mp4");
                 }
-                // The sequence header itself precedes the keyframe on the wire,
+                // The sequence header itself precedes the keyframe on the stream,
                 // as its own paced video message with the same wall-derived
                 // timestamp as the frames. The source's raw media timestamps (a
                 // live DVR timeline can be tens of hours) must never leak onto
-                // the wire: the server drops video that far ahead of audio.
+                // the stream: the server drops video that far ahead of audio.
                 Frame header;
                 header.due = anchor_due(video_anchor_, dts_ms);
                 header.timestamp = static_cast<uint32_t>(std::max<int64_t>(
@@ -373,7 +391,7 @@ void Publisher::feed_video(int64_t dts_ms, int64_t pts_ms, std::string_view anne
             return;
         }
 
-        // Decoding timestamps must not go backwards on the wire.
+        // Decoding timestamps must not go backwards on the stream.
         int64_t dts = std::max(dts_ms, last_video_dts_);
         last_video_dts_ = dts;
         int64_t due = anchor_due(video_anchor_, dts);
@@ -457,13 +475,17 @@ void Publisher::run_sender() {
                 stale = client == nullptr || generation != generation_;
             }
             if (client != nullptr && !client->is_closed() && !stale) {
-                // The wire timestamps must never go backwards or repeat;
+                // The stream timestamps must never go backwards or repeat;
                 // a decoder drops the track otherwise (the reference clamps
                 // its video dts for the same reason). Clamp per track.
                 uint32_t &last = is_video ? last_sent_video_ts_ : last_sent_audio_ts_;
                 if (frame.timestamp <= last)
                     frame.timestamp = last + 1;
                 last = frame.timestamp;
+                // The time spent inside the send is time the kernel could
+                // not drain the socket: the most direct slow-connection
+                // measure there is.
+                const int64_t send_started = steady_ms();
                 if (is_video && frame.sequence_header) {
                     client->send_video(frame.timestamp, frame.body);
                 } else if (is_video) {
@@ -472,6 +494,8 @@ void Publisher::run_sender() {
                 } else {
                     client->send_audio(frame.timestamp, frame.body);
                 }
+                send_blocked_ms_.fetch_add(steady_ms() - send_started,
+                                           std::memory_order_relaxed);
                 frames_sent_.fetch_add(1, std::memory_order_relaxed);
                 if (is_video)
                     video_frames_sent_.fetch_add(1, std::memory_order_relaxed);

@@ -46,7 +46,8 @@ player.stats
 # {'position': 6.1, 'paused': False, 'muted': False, 'connected': True,
 #  'stopped': False, 'loops': 0, 'bitrate_kbps': 116.1, 'frames_sent': 428,
 #  'video_frames_sent': 51, 'bytes_sent': 90211, 'frames_dropped': 0,
-#  'window_bytes': None, 'av_skew_ms': 0, 'error': None}
+#  'window_bytes': None, 'av_skew_ms': 0, 'backlog_ms': 12, 'send_blocked_ms': 3,
+#  'error': None}
 ```
 
 `bitrate_kbps` is also a property on its own: a ~10 second rolling average of the stream throughput.
