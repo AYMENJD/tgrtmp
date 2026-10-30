@@ -513,6 +513,131 @@ def test_next_with_an_empty_playlist_is_a_no_op(factory, sample2):
     player.stop()
 
 
+@pytest.fixture(scope="module")
+def gop45_ts(tmp_path_factory):
+    """A 10 fps TS with a 4.5 s GOP (keyframes at 0, 4.5, 9.0, ...): a
+    reconnect early in the stream waits well over a second for the next
+    keyframe."""
+    import subprocess
+
+    path = str(tmp_path_factory.mktemp("gop") / "gop45.ts")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=160x120:rate=10:duration=18",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=18",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-g",
+            "45",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "48k",
+            # A fine audio cadence (a small PES every ~100 ms), like a
+            # full-bitrate live stream: with the muxer's default 0.7 s
+            # interleave delay the audio arrives in 16-frame bursts and the
+            # hold-expiry check is quantized past the race it must catch.
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            "-f",
+            "mpegts",
+            path,
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return path
+
+
+class LivePacedFile:
+    """A file that yields bytes no faster than its average bitrate, like a
+    live socket: a stalled player cannot read ahead of the live edge, so a
+    reconnect rejoins the stream mid-GOP exactly as a live relay does."""
+
+    def __init__(self, path, duration):
+        with open(path, "rb") as handle:
+            self.data = handle.read()
+        self.at = 0
+        self.started = time.monotonic()
+        self.rate = len(self.data) / duration
+
+    def read(self, n):
+        while self.at >= int((time.monotonic() - self.started) * self.rate):
+            time.sleep(0.02)
+        out = self.data[self.at : self.at + n]
+        self.at += len(out)
+        return out
+
+
+def test_a_mid_gop_reconnect_never_commits_audio_only(gop45_ts, monkeypatch):
+    """The regression test for the mid-GOP-reconnect bug: the player
+    reconnects without reopening the source, so the fresh demuxer rejoins
+    the stream mid-GOP. If the first audio's hold (wait_video_ms) expires
+    before the next keyframe, the dimensionless onMetaData is sent first
+    and Telegram's server commits the livestream to audio-only, discarding
+    the video that follows while every client-side counter keeps looking
+    healthy."""
+    # A live relay reads 16 KiB every ~100 ms at full bitrate; this tiny
+    # sample carries 0.8 s of media per 16 KiB, which quantizes the
+    # hold-expiry check to chunk boundaries and lets the keyframe win a
+    # race it loses at full bitrate. Read like a full-bitrate relay does.
+    monkeypatch.setattr(tgrtmp.player, "CHUNK", 2048)
+
+    server = RtmpTestServer(close_after_media=8)
+    server.__enter__()
+    player = None
+    messages = []
+    try:
+        player = tgrtmp.publish(
+            LivePacedFile(gop45_ts, 18.0),
+            URL.format(server.port),
+            "key",
+            reconnect_delay=0.05,
+            freeze_interval=0.1,
+            log=messages.append,
+        )
+        # The default stall bound (15 s) sits far above the audio hold, and
+        # this must too: a stall shorter than the hold kills the session
+        # mid-hold and the dimensionless path is never even reached.
+        player._stall_seconds = 2.0
+
+        # The drop recycles the session: a second connection comes up and
+        # video flows again on it.
+        assert wait_for(
+            lambda: sum(1 for m in messages if m.startswith("Connected to")) >= 2, 30
+        ), f"the drop never reconnected: {messages}"
+        dropped_at = video_count(server)
+        assert wait_for(lambda: video_count(server) > dropped_at, 30), (
+            "video never flowed again after the reconnect"
+        )
+
+        # Every metadata ever sent carried dimensions: none was the
+        # dimensionless one that commits the livestream to audio-only.
+        assert len(server.metadata_all) >= 2, server.metadata_all
+        assert all("width" in meta for meta in server.metadata_all), (
+            server.metadata_all
+        )
+        assert not any("audio-only" in m for m in messages), messages
+    finally:
+        if player is not None:
+            player.stop()
+        server.__exit__()
+
+
 def test_a_source_timeline_reset_keeps_the_position_sane(factory, media, tmp_path):
     """Two concatenated copies of one file restart the timestamps at the
     seam: a new timeline must reset the position, not drag it negative,

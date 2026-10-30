@@ -187,7 +187,12 @@ class Player:
         reconnect_delay=1.0,
         max_reconnect_delay=30.0,
         lookahead_ms=1000,
-        wait_video_ms=1000,
+        # A reconnect keeps the source handle, so the fresh demuxer rejoins a
+        # live stream mid-GOP and the next keyframe follows within one GOP;
+        # the hold must cover it, or the dimensionless onMetaData is sent
+        # first and the server commits the livestream to audio-only (still
+        # well under the 10s after which it drops a silent publisher).
+        wait_video_ms=3000,
         freeze_interval=1.0,
         loop=False,
         window_bytes=0,

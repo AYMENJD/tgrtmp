@@ -51,6 +51,7 @@ class RtmpTestServer:
         self.closed_by_client = threading.Event()
         self.published = threading.Event()
         self.metadata = None
+        self.metadata_all = []  # Every onMetaData, in order (.metadata is the last).
         self._sock = None
         self._listener = None
         self._parser = None
@@ -249,6 +250,7 @@ class RtmpTestServer:
                 values = amf_decode_all(bytes(payload))
                 if values and values[0] == "@setDataFrame":
                     self.metadata = values[2]
+                    self.metadata_all.append(values[2])
             else:
                 self.media.append((type_id, timestamp, stream_id, bytes(payload)))
                 if (
